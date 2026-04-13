@@ -16,6 +16,8 @@ import { Affiliate } from "./pages/Affiliate";
 import { CartPage } from "./pages/CartPage";
 import { AffiliateProvider } from "./context/AffiliateContext";
 import { CartProvider } from "./context/CartContext";
+import { db } from "./firebase";
+import { doc, updateDoc, increment } from "firebase/firestore";
 
 export default function App() {
   return (
@@ -38,7 +40,8 @@ function AppContent() {
       try {
         const lastTracked = sessionStorage.getItem(`tracked_click_${ref}`);
         if (!lastTracked) {
-          fetch(`/api/affiliates/${ref}/click`, { method: 'POST' })
+          const docRef = doc(db, 'affiliates', ref);
+          updateDoc(docRef, { clicks: increment(1) })
             .catch(err => console.error("Failed to track click:", err));
           sessionStorage.setItem(`tracked_click_${ref}`, 'true');
         }

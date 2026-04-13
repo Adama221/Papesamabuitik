@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Product } from '../data/products';
+import { db, auth, handleFirestoreError, OperationType } from '../firebase';
+import { collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 
 interface ProductContextType {
   products: Product[];
@@ -13,112 +16,83 @@ interface ProductContextType {
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
 
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('sbc_admin_token');
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-  };
-};
-
 export function ProductProvider({ children }: { children: React.ReactNode }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [coverImage, setCoverImage] = useState<string>("/cover.jpg");
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
-    setIsLoading(true);
-    fetch('/api/products')
-      .then(async res => {
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        const contentType = res.headers.get("content-type");
-        if (contentType && contentType.indexOf("application/json") !== -1) {
-          return res.json();
-        } else {
-          throw new Error("Expected JSON response");
-        }
-      })
-      .then(data => {
-        setProducts(data);
-        setIsLoading(false);
-      })
-      .catch(err => {
-        console.error("Failed to fetch products:", err);
-        setIsLoading(false);
-      });
-
-    fetch('/api/settings/cover')
-      .then(async res => {
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        const contentType = res.headers.get("content-type");
-        if (contentType && contentType.indexOf("application/json") !== -1) {
-          return res.json();
-        } else {
-          throw new Error("Expected JSON response");
-        }
-      })
-      .then(data => {
-        if (data.coverImage) setCoverImage(data.coverImage);
-      })
-      .catch(err => console.error("Failed to fetch cover image:", err));
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      setIsAuthReady(true);
+    });
+    return () => unsubscribeAuth();
   }, []);
+
+  useEffect(() => {
+    if (!isAuthReady) return;
+
+    setIsLoading(true);
+    
+    const unsubscribeProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+      const productsData: Product[] = [];
+      snapshot.forEach((doc) => {
+        productsData.push({ id: doc.id, ...doc.data() } as Product);
+      });
+      setProducts(productsData);
+      setIsLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'products');
+      setIsLoading(false);
+    });
+
+    const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'cover'), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().coverImage) {
+        setCoverImage(docSnap.data().coverImage);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'settings/cover');
+    });
+
+    return () => {
+      unsubscribeProducts();
+      unsubscribeSettings();
+    };
+  }, [isAuthReady]);
 
   const addProduct = async (product: Product) => {
     try {
-      const res = await fetch('/api/products', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(product)
-      });
-      if (res.ok) {
-        setProducts(prev => [...prev, product]);
-      }
+      const docRef = doc(db, 'products', product.id);
+      await setDoc(docRef, product);
     } catch (err) {
-      console.error("Failed to add product:", err);
+      handleFirestoreError(err, OperationType.CREATE, `products/${product.id}`);
     }
   };
 
   const updateProduct = async (id: string, updatedProduct: Partial<Product>) => {
     try {
-      const res = await fetch(`/api/products/${id}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(updatedProduct)
-      });
-      if (res.ok) {
-        setProducts(prev => prev.map(p => p.id === id ? { ...p, ...updatedProduct } : p));
-      }
+      const docRef = doc(db, 'products', id);
+      await updateDoc(docRef, updatedProduct);
     } catch (err) {
-      console.error("Failed to update product:", err);
+      handleFirestoreError(err, OperationType.UPDATE, `products/${id}`);
     }
   };
 
   const deleteProduct = async (id: string) => {
     try {
-      const res = await fetch(`/api/products/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      });
-      if (res.ok) {
-        setProducts(prev => prev.filter(p => p.id !== id));
-      }
+      const docRef = doc(db, 'products', id);
+      await deleteDoc(docRef);
     } catch (err) {
-      console.error("Failed to delete product:", err);
+      handleFirestoreError(err, OperationType.DELETE, `products/${id}`);
     }
   };
 
   const updateCoverImage = async (image: string) => {
     try {
-      const res = await fetch('/api/settings/cover', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ coverImage: image })
-      });
-      if (res.ok) {
-        setCoverImage(image);
-      }
+      const docRef = doc(db, 'settings', 'cover');
+      await setDoc(docRef, { coverImage: image }, { merge: true });
     } catch (err) {
-      console.error("Failed to update cover image:", err);
+      handleFirestoreError(err, OperationType.UPDATE, 'settings/cover');
     }
   };
 

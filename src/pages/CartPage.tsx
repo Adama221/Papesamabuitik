@@ -2,6 +2,8 @@ import { useCart } from "../context/CartContext";
 import { useProducts } from "../context/ProductContext";
 import { Link } from "react-router-dom";
 import { Trash2, Plus, Minus, ArrowLeft, ShoppingCart } from "lucide-react";
+import { db, handleFirestoreError, OperationType } from "../firebase";
+import { doc, updateDoc, increment } from "firebase/firestore";
 
 export function CartPage() {
   const { cartItems, removeFromCart, updateQuantity, totalPrice, totalCommission, clearCart } = useCart();
@@ -14,14 +16,14 @@ export function CartPage() {
     try {
       const ref = localStorage.getItem('sbc_current_ref');
       if (ref && totalCommission > 0) {
-        await fetch(`/api/affiliates/${ref}/sale`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ commissionAmount: totalCommission })
+        const docRef = doc(db, 'affiliates', ref);
+        await updateDoc(docRef, {
+          earnings: increment(totalCommission),
+          sales: increment(1)
         });
       }
     } catch (err) {
-      console.error("Failed to track sale:", err);
+      handleFirestoreError(err, OperationType.UPDATE, 'affiliates');
     }
   };
 

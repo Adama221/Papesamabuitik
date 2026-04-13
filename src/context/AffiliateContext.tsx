@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { collection, doc, setDoc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
 
 interface AffiliateUser {
   id: string;
@@ -29,54 +31,65 @@ export function AffiliateProvider({ children }: { children: React.ReactNode }) {
     try {
       if (currentAffiliate) {
         localStorage.setItem('sbc_affiliate_user', JSON.stringify(currentAffiliate));
+        // Set up real-time listener for the logged-in affiliate
+        const unsubscribe = onSnapshot(doc(db, 'affiliates', currentAffiliate.id), (docSnap) => {
+          if (docSnap.exists()) {
+            setCurrentAffiliate({ id: docSnap.id, ...docSnap.data() } as AffiliateUser);
+          }
+        }, (error) => {
+          console.error("Failed to listen to affiliate updates", error);
+        });
+        return () => unsubscribe();
       } else {
         localStorage.removeItem('sbc_affiliate_user');
       }
     } catch (e) {
       console.error("Failed to save affiliate to localStorage", e);
     }
-  }, [currentAffiliate]);
+  }, [currentAffiliate?.id]); // Only re-run if ID changes
 
   const registerAffiliate = async (name: string, phone: string, payment_info: string) => {
     try {
-      const res = await fetch('/api/affiliates/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, phone, payment_info })
-      });
-      if (res.ok) {
-        const contentType = res.headers.get("content-type");
-        if (contentType && contentType.indexOf("application/json") !== -1) {
-          const data = await res.json();
-          setCurrentAffiliate(data);
-          return true;
-        }
+      // Check if phone already exists
+      const q = query(collection(db, 'affiliates'), where('phone', '==', phone));
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        return false; // Phone already registered
       }
-      return false;
+
+      const id = `aff_${Date.now()}`;
+      const newAffiliate = {
+        name,
+        phone,
+        payment_info,
+        earnings: 0,
+        sales: 0,
+        clicks: 0,
+        status: 'pending'
+      };
+      
+      await setDoc(doc(db, 'affiliates', id), newAffiliate);
+      setCurrentAffiliate({ id, ...newAffiliate });
+      return true;
     } catch (err) {
-      console.error("Failed to register affiliate:", err);
+      handleFirestoreError(err, OperationType.CREATE, 'affiliates');
       return false;
     }
   };
 
   const loginAffiliate = async (phone: string) => {
     try {
-      const res = await fetch('/api/affiliates/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone })
-      });
-      if (res.ok) {
-        const contentType = res.headers.get("content-type");
-        if (contentType && contentType.indexOf("application/json") !== -1) {
-          const data = await res.json();
-          setCurrentAffiliate(data);
-          return true;
-        }
+      const q = query(collection(db, 'affiliates'), where('phone', '==', phone));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const docSnap = querySnapshot.docs[0];
+        setCurrentAffiliate({ id: docSnap.id, ...docSnap.data() } as AffiliateUser);
+        return true;
       }
       return false;
     } catch (err) {
-      console.error("Failed to login affiliate:", err);
+      handleFirestoreError(err, OperationType.GET, 'affiliates');
       return false;
     }
   };
