@@ -1,12 +1,20 @@
-# Sama Butik Couture
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
 
-Boutique en ligne pour la vente de grands boubous 3 pièces.
+# Run and deploy your AI Studio app
 
-## Déploiement sur Hostinger (VPS ou Node.js)
+This contains everything you need to run your app locally.
 
-1. Clonez ce dépôt sur votre serveur.
-2. Installez les dépendances : `npm install`
-3. Construisez le projet : `npm run build`
-4. Lancez le serveur : `npm start` (ou utilisez `pm2 start npm --name "samabutik" -- start`)
+View your app in AI Studio: https://ai.studio/apps/97e23406-51ff-4a5c-befc-78be67b1b1c6
 
-*Dernière mise à jour : Préparation pour le déploiement.*
+## Run Locally
+
+**Prerequisites:**  Node.js
+
+
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`
