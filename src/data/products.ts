@@ -13,5 +13,4 @@ export interface Product {
   commission: number;
 }
 
-// Les produits sont maintenant gérés dynamiquement via la base de données (SQLite/Firebase)
-export const products: Product[] = [];
+export const initialProducts: Product[] = [];

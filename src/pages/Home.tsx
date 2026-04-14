@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import React, { useState } from "react";
 import { useProducts } from "../context/ProductContext";
 import { ArrowRight, ShieldCheck, Truck, Clock, SearchX } from "lucide-react";
 

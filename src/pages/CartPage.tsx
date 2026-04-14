@@ -1,13 +1,14 @@
+import React from 'react';
 import { useCart } from "../context/CartContext";
 import { useProducts } from "../context/ProductContext";
+import { useAffiliate } from "../context/AffiliateContext";
 import { Link } from "react-router-dom";
 import { Trash2, Plus, Minus, ArrowLeft, ShoppingCart } from "lucide-react";
-import { db, handleFirestoreError, OperationType } from "../firebase";
-import { doc, updateDoc, increment } from "firebase/firestore";
 
 export function CartPage() {
   const { cartItems, removeFromCart, updateQuantity, totalPrice, totalCommission, clearCart } = useCart();
   const { isLoading } = useProducts();
+  const { trackSale } = useAffiliate();
 
   const wavePaymentUrl = `https://pay.wave.com/m/M_RwXuK52gDPiA/c/sn/?amount=${totalPrice}`;
   const omPaymentLink = cartItems.find(item => item.product.om_payment_link)?.product.om_payment_link;
@@ -16,14 +17,10 @@ export function CartPage() {
     try {
       const ref = localStorage.getItem('sbc_current_ref');
       if (ref && totalCommission > 0) {
-        const docRef = doc(db, 'affiliates', ref);
-        await updateDoc(docRef, {
-          earnings: increment(totalCommission),
-          sales: increment(1)
-        });
+        trackSale(ref, totalCommission);
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'affiliates');
+      console.error(err);
     }
   };
 

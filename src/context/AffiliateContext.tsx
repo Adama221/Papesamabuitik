@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, doc, setDoc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
 
-interface AffiliateUser {
+export interface AffiliateUser {
   id: string;
   name: string;
   phone?: string;
@@ -10,6 +8,7 @@ interface AffiliateUser {
   earnings: number;
   sales: number;
   clicks: number;
+  status?: string;
 }
 
 interface AffiliateContextType {
@@ -17,6 +16,11 @@ interface AffiliateContextType {
   registerAffiliate: (name: string, phone: string, payment_info: string) => Promise<boolean>;
   loginAffiliate: (phone: string) => Promise<boolean>;
   logoutAffiliate: () => void;
+  getAllAffiliates: () => AffiliateUser[];
+  updateAffiliate: (id: string, data: Partial<AffiliateUser>) => void;
+  deleteAffiliate: (id: string) => void;
+  trackClick: (id: string) => void;
+  trackSale: (id: string, commission: number) => void;
 }
 
 const AffiliateContext = createContext<AffiliateContextType | undefined>(undefined);
@@ -31,73 +35,105 @@ export function AffiliateProvider({ children }: { children: React.ReactNode }) {
     try {
       if (currentAffiliate) {
         localStorage.setItem('sbc_affiliate_user', JSON.stringify(currentAffiliate));
-        // Set up real-time listener for the logged-in affiliate
-        const unsubscribe = onSnapshot(doc(db, 'affiliates', currentAffiliate.id), (docSnap) => {
-          if (docSnap.exists()) {
-            setCurrentAffiliate({ id: docSnap.id, ...docSnap.data() } as AffiliateUser);
-          }
-        }, (error) => {
-          console.error("Failed to listen to affiliate updates", error);
-        });
-        return () => unsubscribe();
       } else {
         localStorage.removeItem('sbc_affiliate_user');
       }
     } catch (e) {
       console.error("Failed to save affiliate to localStorage", e);
     }
-  }, [currentAffiliate?.id]); // Only re-run if ID changes
+  }, [currentAffiliate]);
+
+  const getAllAffiliates = (): AffiliateUser[] => {
+    const saved = localStorage.getItem('sbc_all_affiliates');
+    return saved ? JSON.parse(saved) : [];
+  };
+
+  const saveAllAffiliates = (affiliates: AffiliateUser[]) => {
+    localStorage.setItem('sbc_all_affiliates', JSON.stringify(affiliates));
+  };
 
   const registerAffiliate = async (name: string, phone: string, payment_info: string) => {
-    try {
-      // Check if phone already exists
-      const q = query(collection(db, 'affiliates'), where('phone', '==', phone));
-      const querySnapshot = await getDocs(q);
-      if (!querySnapshot.empty) {
-        return false; // Phone already registered
-      }
-
-      const id = `aff_${Date.now()}`;
-      const newAffiliate = {
-        name,
-        phone,
-        payment_info,
-        earnings: 0,
-        sales: 0,
-        clicks: 0,
-        status: 'pending'
-      };
-      
-      await setDoc(doc(db, 'affiliates', id), newAffiliate);
-      setCurrentAffiliate({ id, ...newAffiliate });
-      return true;
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'affiliates');
+    const affiliates = getAllAffiliates();
+    if (affiliates.some(a => a.phone === phone)) {
       return false;
     }
+
+    const id = `aff_${Date.now()}`;
+    const newAffiliate: AffiliateUser = {
+      id,
+      name,
+      phone,
+      payment_info,
+      earnings: 0,
+      sales: 0,
+      clicks: 0,
+      status: 'pending'
+    };
+    
+    saveAllAffiliates([...affiliates, newAffiliate]);
+    setCurrentAffiliate(newAffiliate);
+    return true;
   };
 
   const loginAffiliate = async (phone: string) => {
-    try {
-      const q = query(collection(db, 'affiliates'), where('phone', '==', phone));
-      const querySnapshot = await getDocs(q);
-      
-      if (!querySnapshot.empty) {
-        const docSnap = querySnapshot.docs[0];
-        setCurrentAffiliate({ id: docSnap.id, ...docSnap.data() } as AffiliateUser);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      handleFirestoreError(err, OperationType.GET, 'affiliates');
-      return false;
+    const affiliates = getAllAffiliates();
+    const found = affiliates.find(a => a.phone === phone);
+    if (found) {
+      setCurrentAffiliate(found);
+      return true;
     }
+    return false;
   };
 
   const logoutAffiliate = () => setCurrentAffiliate(null);
 
+  const updateAffiliate = (id: string, data: Partial<AffiliateUser>) => {
+    const affiliates = getAllAffiliates();
+    const updated = affiliates.map(a => a.id === id ? { ...a, ...data } : a);
+    saveAllAffiliates(updated);
+    if (currentAffiliate?.id === id) {
+      setCurrentAffiliate({ ...currentAffiliate, ...data });
+    }
+  };
+
+  const deleteAffiliate = (id: string) => {
+    const affiliates = getAllAffiliates();
+    saveAllAffiliates(affiliates.filter(a => a.id !== id));
+    if (currentAffiliate?.id === id) {
+      setCurrentAffiliate(null);
+    }
+  };
+
+  const trackClick = (id: string) => {
+    const affiliates = getAllAffiliates();
+    const updated = affiliates.map(a => a.id === id ? { ...a, clicks: a.clicks + 1 } : a);
+    saveAllAffiliates(updated);
+    if (currentAffiliate?.id === id) {
+      setCurrentAffiliate({ ...currentAffiliate, clicks: currentAffiliate.clicks + 1 });
+    }
+  };
+
+  const trackSale = (id: string, commission: number) => {
+    const affiliates = getAllAffiliates();
+    const updated = affiliates.map(a => a.id === id ? { ...a, sales: a.sales + 1, earnings: a.earnings + commission } : a);
+    saveAllAffiliates(updated);
+    if (currentAffiliate?.id === id) {
+      setCurrentAffiliate({ ...currentAffiliate, sales: currentAffiliate.sales + 1, earnings: currentAffiliate.earnings + commission });
+    }
+  };
+
   return (
-    <AffiliateContext.Provider value={{ currentAffiliate, registerAffiliate, loginAffiliate, logoutAffiliate }}>
+    <AffiliateContext.Provider value={{ 
+      currentAffiliate, 
+      registerAffiliate, 
+      loginAffiliate, 
+      logoutAffiliate,
+      getAllAffiliates,
+      updateAffiliate,
+      deleteAffiliate,
+      trackClick,
+      trackSale
+    }}>
       {children}
     </AffiliateContext.Provider>
   );

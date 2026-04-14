@@ -1,5 +1,5 @@
+import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useState } from "react";
 import { useProducts } from "../context/ProductContext";
 import { useAffiliate } from "../context/AffiliateContext";
 import { useCart } from "../context/CartContext";

@@ -1,8 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Product } from '../data/products';
-import { db, auth, handleFirestoreError, OperationType } from '../firebase';
-import { collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
+import { Product, initialProducts } from '../data/products';
 
 interface ProductContextType {
   products: Product[];
@@ -20,80 +17,50 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [coverImage, setCoverImage] = useState<string>("/cover.jpg");
-  const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      setIsAuthReady(true);
-    });
-    return () => unsubscribeAuth();
+    // Load products from localStorage
+    const savedProducts = localStorage.getItem('sbc_products');
+    if (savedProducts) {
+      try {
+        setProducts(JSON.parse(savedProducts));
+      } catch (e) {
+        setProducts(initialProducts);
+      }
+    } else {
+      setProducts(initialProducts);
+    }
+
+    // Load cover image from localStorage
+    const savedCover = localStorage.getItem('sbc_cover_image');
+    if (savedCover) {
+      setCoverImage(savedCover);
+    }
+
+    setIsLoading(false);
   }, []);
 
   useEffect(() => {
-    if (!isAuthReady) return;
-
-    setIsLoading(true);
-    
-    const unsubscribeProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
-      const productsData: Product[] = [];
-      snapshot.forEach((doc) => {
-        productsData.push({ id: doc.id, ...doc.data() } as Product);
-      });
-      setProducts(productsData);
-      setIsLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'products');
-      setIsLoading(false);
-    });
-
-    const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'cover'), (docSnap) => {
-      if (docSnap.exists() && docSnap.data().coverImage) {
-        setCoverImage(docSnap.data().coverImage);
-      }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'settings/cover');
-    });
-
-    return () => {
-      unsubscribeProducts();
-      unsubscribeSettings();
-    };
-  }, [isAuthReady]);
+    if (!isLoading) {
+      localStorage.setItem('sbc_products', JSON.stringify(products));
+    }
+  }, [products, isLoading]);
 
   const addProduct = async (product: Product) => {
-    try {
-      const docRef = doc(db, 'products', product.id);
-      await setDoc(docRef, product);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `products/${product.id}`);
-    }
+    setProducts(prev => [...prev, product]);
   };
 
   const updateProduct = async (id: string, updatedProduct: Partial<Product>) => {
-    try {
-      const docRef = doc(db, 'products', id);
-      await updateDoc(docRef, updatedProduct);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `products/${id}`);
-    }
+    setProducts(prev => prev.map(p => p.id === id ? { ...p, ...updatedProduct } : p));
   };
 
   const deleteProduct = async (id: string) => {
-    try {
-      const docRef = doc(db, 'products', id);
-      await deleteDoc(docRef);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `products/${id}`);
-    }
+    setProducts(prev => prev.filter(p => p.id !== id));
   };
 
   const updateCoverImage = async (image: string) => {
-    try {
-      const docRef = doc(db, 'settings', 'cover');
-      await setDoc(docRef, { coverImage: image }, { merge: true });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'settings/cover');
-    }
+    setCoverImage(image);
+    localStorage.setItem('sbc_cover_image', image);
   };
 
   return (

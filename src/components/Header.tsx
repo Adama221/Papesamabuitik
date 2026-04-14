@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Menu, Search, X, ShoppingCart } from "lucide-react";
 import { useCart } from "../context/CartContext";

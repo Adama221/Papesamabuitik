@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useAffiliate } from "../context/AffiliateContext";
 import { Copy, Share2, TrendingUp, Users, DollarSign, LogOut } from "lucide-react";
 

@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import React, { useEffect } from "react";
 import { Routes, Route, useLocation, Navigate } from "react-router-dom";
-import { useEffect } from "react";
 import { Header } from "./components/Header";
 import { Footer } from "./components/Footer";
 import { WhatsAppButton } from "./components/WhatsAppButton";
@@ -14,10 +14,8 @@ import { Confirmation } from "./pages/Confirmation";
 import { Admin } from "./pages/Admin";
 import { Affiliate } from "./pages/Affiliate";
 import { CartPage } from "./pages/CartPage";
-import { AffiliateProvider } from "./context/AffiliateContext";
+import { AffiliateProvider, useAffiliate } from "./context/AffiliateContext";
 import { CartProvider } from "./context/CartContext";
-import { db } from "./firebase";
-import { doc, updateDoc, increment } from "firebase/firestore";
 
 export default function App() {
   return (
@@ -31,6 +29,7 @@ export default function App() {
 
 function AppContent() {
   const location = useLocation();
+  const { trackClick } = useAffiliate();
 
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
@@ -40,9 +39,7 @@ function AppContent() {
       try {
         const lastTracked = sessionStorage.getItem(`tracked_click_${ref}`);
         if (!lastTracked) {
-          const docRef = doc(db, 'affiliates', ref);
-          updateDoc(docRef, { clicks: increment(1) })
-            .catch(err => console.error("Failed to track click:", err));
+          trackClick(ref);
           sessionStorage.setItem(`tracked_click_${ref}`, 'true');
         }
         // Store the ref in localStorage so we can credit them for sales later
@@ -51,7 +48,7 @@ function AppContent() {
         console.error("Storage access denied or full", e);
       }
     }
-  }, [location]);
+  }, [location, trackClick]);
 
   return (
     <div className="min-h-screen flex flex-col font-sans text-gray-900 bg-white">
