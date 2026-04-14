@@ -3,6 +3,7 @@ import { useProducts } from "../context/ProductContext";
 import { useAffiliate } from "../context/AffiliateContext";
 import { Package, Users, DollarSign, ShoppingCart, LogOut, Plus, Trash2, Edit, Image as ImageIcon, X, Check } from "lucide-react";
 import { Product } from "../data/products";
+import { pb } from "../pocketbase";
 
 export function Admin() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -18,22 +19,39 @@ export function Admin() {
   const [affiliates, setAffiliates] = useState<any[]>([]);
 
   useEffect(() => {
-    const authStatus = localStorage.getItem('sbc_admin_auth');
-    if (authStatus === 'true') {
+    // Check PocketBase auth store first
+    if (pb.authStore.isValid && pb.authStore.isAdmin) {
       setIsAuthenticated(true);
+    } else {
+      // Fallback local auth
+      const authStatus = localStorage.getItem('sbc_admin_auth');
+      if (authStatus === 'true') {
+        setIsAuthenticated(true);
+      }
     }
     setIsAuthLoading(false);
   }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
-      // Poll for affiliates since we don't have real-time updates anymore
-      const fetchAffiliates = () => {
-        setAffiliates(getAllAffiliates());
+      let interval: NodeJS.Timeout;
+      const fetchAffiliates = async () => {
+        const data = await getAllAffiliates();
+        setAffiliates(data);
       };
       fetchAffiliates();
-      const interval = setInterval(fetchAffiliates, 2000);
-      return () => clearInterval(interval);
+      
+      pb.collection('affiliates').subscribe('*', function (e) {
+        fetchAffiliates();
+      }).catch(e => {
+        // Fallback polling if PB fails
+        interval = setInterval(fetchAffiliates, 2000);
+      });
+      
+      return () => {
+        if (interval) clearInterval(interval);
+        pb.collection('affiliates').unsubscribe('*').catch(e => {});
+      };
     }
   }, [isAuthenticated, getAllAffiliates]);
   
@@ -69,16 +87,24 @@ export function Admin() {
     const cleanUsername = username.trim();
     const cleanPassword = password.trim();
 
-    if (cleanUsername === "Papesn" && cleanPassword === "Pape221@") {
-      localStorage.setItem('sbc_admin_auth', 'true');
-      setIsAuthenticated(true);
-    } else {
-      setError("Identifiants incorrects. Utilisez 'Papesn' et 'Pape221@'.");
+    try {
+      if (cleanUsername === "Papesn" && cleanPassword === "Pape221@") {
+        localStorage.setItem('sbc_admin_auth', 'true');
+        setIsAuthenticated(true);
+      } else if (cleanUsername.includes('@')) {
+        await pb.admins.authWithPassword(cleanUsername, cleanPassword);
+        setIsAuthenticated(true);
+      } else {
+        setError("Identifiants incorrects. Utilisez un email admin valide ou 'Papesn'.");
+      }
+    } catch (err: any) {
+      setError("Erreur de connexion PocketBase : " + err.message);
     }
     setIsLoggingIn(false);
   };
 
   const handleLogout = () => {
+    pb.authStore.clear();
     localStorage.removeItem('sbc_admin_auth');
     setIsAuthenticated(false);
   };
@@ -191,9 +217,8 @@ export function Admin() {
     if (editingProduct) {
       updateProduct(editingProduct.id, formData);
     } else {
-      const newProduct: Product = {
-        ...(formData as Product),
-        id: `prod_${Date.now()}`
+      const newProduct = {
+        ...(formData as Omit<Product, 'id'>)
       };
       addProduct(newProduct);
     }
